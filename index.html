@@ -2,110 +2,91 @@
 <html lang="th">
 <head>
     <meta charset="UTF-8">
-    <title>Thailand Election Leaderboard 2026</title>
+    <title>Khon Kaen Election Live Score - 11 Constituencies</title>
     <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet">
-    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
     <style>
-        body { background: #fdfdfd; font-family: 'Sarabun', sans-serif; }
-        .party-card { border: none; border-radius: 15px; transition: 0.3s; overflow: hidden; }
-        .party-color-bar { height: 8px; width: 100%; }
-        .score-big { font-size: 2.5rem; font-weight: bold; color: #1a1a1a; }
+        body { background-color: #f8f9fa; font-family: 'Sarabun', sans-serif; }
+        .constituency-header { background: #003366; color: white; padding: 15px; border-radius: 10px 10px 0 0; }
+        .candidate-card { border: none; border-bottom: 1px solid #eee; padding: 10px; transition: 0.2s; }
+        .candidate-card:hover { background-color: #f1f8ff; }
+        .vote-count { font-size: 1.2rem; font-weight: bold; color: #0056b3; }
+        .rank-1 { border-left: 5px solid gold; }
     </style>
 </head>
 <body>
 
 <div class="container py-5">
-    <div class="row mb-5">
-        <div class="col-12 text-center">
-            <h2 class="fw-bold">Leaderboard พรรคการเมือง</h2>
-            <p class="text-muted">สรุปจำนวน สส. และคะแนนยอดนิยม (Popular Vote) ทั่วประเทศ</p>
-        </div>
+    <div class="text-center mb-5">
+        <h1 class="fw-bold">ผลคะแนนเลือกตั้ง จังหวัดขอนแก่น</h1>
+        <span class="badge bg-primary">ทั้งหมด 11 เขตเลือกตั้ง</span>
     </div>
 
-    <div class="row mb-5 justify-content-center">
-        <div class="col-md-8">
-            <div class="card p-4 shadow-sm border-0">
-                <canvas id="partyChart"></canvas>
-            </div>
-        </div>
-    </div>
-
-    <div class="row g-4" id="partyLeaderboard">
+    <div class="row g-4" id="dashboard">
         </div>
 </div>
 
 <script>
-async function fetchElectionData() {
+async function loadKhonKaenData() {
     try {
-        // ใช้ Proxy เพื่อเลี่ยง CORS (สำหรับการทดสอบ)
-        const proxy = "https://api.allorigins.win/raw?url=";
-        const urlResult = encodeURIComponent("https://static-ectreport69.ect.go.th/data/data/result/result_all.json");
-        const urlParty = encodeURIComponent("https://static-ectreport69.ect.go.th/data/data/refs/info_party.json");
-
-        const [resScore, resParty] = await Promise.all([
-            fetch(proxy + urlResult).then(r => r.json()),
-            fetch(proxy + urlParty).then(r => r.json())
+        // ดึงข้อมูลผู้สมัครและคะแนน (ขอนแก่น id: 40)
+        const [resCan, resScore] = await Promise.all([
+            fetch('candidate_constituency.json').then(r => r.json()),
+            fetch('https://static-ectreport69.ect.go.th/data/data/result/result_province_40.json').then(r => r.json())
         ]);
 
-        // 1. สร้าง Map ข้อมูลพรรคเพื่อให้ดึงใช้ง่ายๆ
-        const partyMap = {};
-        resParty.forEach(p => {
-            partyMap[p.id] = { name: p.name, color: p.color, abbrev: p.abbrev };
-        });
+        const container = document.getElementById('dashboard');
+        
+        // วนลูปสร้าง Dashboard ทั้ง 11 เขต
+        for (let i = 1; i <= 11; i++) {
+            const consData = resCan.filter(c => c.prov_id == "40" && c.cons_no == i);
+            const scores = resScore.mp_constituency_result.filter(s => s.cons_no == i);
 
-        // 2. ประมวลผลคะแนน (รวม สส. เขต + สส. บัญชีรายชื่อ)
-        const sortedParties = resScore.sort((a, b) => (b.total_seat) - (a.total_seat)).slice(0, 6);
+            // รวมข้อมูลผู้สมัครกับคะแนน
+            const merged = consData.map(c => {
+                const score = scores.find(s => s.candidate_id == c.id);
+                return { ...c, vote_count: score ? score.vote_count : 0 };
+            }).sort((a, b) => b.vote_count - a.vote_count);
 
-        renderUI(sortedParties, partyMap);
-        renderChart(sortedParties, partyMap);
-
-    } catch (error) {
-        console.error("Error fetching data:", error);
+            renderConstituency(i, merged, container);
+        }
+    } catch (e) {
+        console.error("Error:", e);
     }
 }
 
-function renderUI(data, partyMap) {
-    const container = document.getElementById('partyLeaderboard');
-    container.innerHTML = data.map(p => {
-        const info = partyMap[p.party_id] || { name: 'ไม่ทราบชื่อพรรค', color: '#ccc' };
-        return `
-            <div class="col-md-4">
-                <div class="card party-card shadow-sm h-100">
-                    <div class="party-color-bar" style="background-color: ${info.color}"></div>
-                    <div class="card-body text-center">
-                        <h6 class="text-muted mb-1">${info.name}</h6>
-                        <div class="score-big">${p.total_seat}</div>
-                        <p class="mb-0 text-uppercase small fw-bold">ที่นั่ง สส. รวม</p>
-                        <hr>
-                        <div class="d-flex justify-content-between px-3">
-                            <small>สส. เขต: <b>${p.cons_seat}</b></small>
-                            <small>สส. บัญชีฯ: <b>${p.list_seat}</b></small>
+function renderConstituency(no, candidates, container) {
+    let html = `
+        <div class="col-lg-4 col-md-6">
+            <div class="card shadow-sm border-0 h-100">
+                <div class="constituency-header">
+                    <h5 class="mb-0">เขตเลือกตั้งที่ ${no}</h5>
+                </div>
+                <div class="card-body p-0">
+                    ${candidates.slice(0, 3).map((can, idx) => `
+                        <div class="candidate-card ${idx === 0 ? 'rank-1' : ''}">
+                            <div class="d-flex justify-content-between align-items-center">
+                                <div>
+                                    <small class="text-muted">${can.party_name}</small>
+                                    <div class="fw-bold">${can.name}</div>
+                                </div>
+                                <div class="text-end">
+                                    <div class="vote-count">${can.vote_count.toLocaleString()}</div>
+                                    <small class="text-muted">คะแนน</small>
+                                </div>
+                            </div>
                         </div>
-                    </div>
+                    `).join('')}
+                </div>
+                <div class="card-footer bg-white border-0 text-center">
+                    <small class="text-primary cursor-pointer">ดูผู้สมัครทั้งหมดในเขตนี้</small>
                 </div>
             </div>
-        `;
-    }).join('');
+        </div>
+    `;
+    container.innerHTML += html;
 }
 
-function renderChart(data, partyMap) {
-    const ctx = document.getElementById('partyChart').getContext('2d');
-    new Chart(ctx, {
-        type: 'bar',
-        data: {
-            labels: data.map(p => partyMap[p.party_id]?.abbrev || p.party_id),
-            datasets: [{
-                label: 'จำนวนที่นั่ง สส. รวม',
-                data: data.map(p => p.total_seat),
-                backgroundColor: data.map(p => partyMap[p.party_id]?.color || '#000'),
-                borderRadius: 10
-            }]
-        },
-        options: { plugins: { legend: { display: false } } }
-    });
-}
-
-fetchElectionData();
+loadKhonKaenData();
 </script>
 </body>
 </html>
