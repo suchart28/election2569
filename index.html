@@ -2,137 +2,110 @@
 <html lang="th">
 <head>
     <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Election Live Score Dashboard</title>
+    <title>Thailand Election Leaderboard 2026</title>
     <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet">
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
     <style>
-        :root { --primary-color: #003366; --accent-color: #ffcc00; }
-        body { background-color: #f4f7f6; font-family: 'Sarabun', sans-serif; }
-        .score-card { border-radius: 15px; border: none; transition: 0.3s; box-shadow: 0 4px 15px rgba(0,0,0,0.1); }
-        .party-logo { width: 50px; height: 50px; object-fit: contain; background: #eee; border-radius: 50%; }
-        .winner-tag { position: absolute; top: -10px; right: -10px; background: gold; padding: 5px 15px; border-radius: 20px; font-weight: bold; font-size: 12px; }
-        .progress { height: 10px; border-radius: 5px; }
+        body { background: #fdfdfd; font-family: 'Sarabun', sans-serif; }
+        .party-card { border: none; border-radius: 15px; transition: 0.3s; overflow: hidden; }
+        .party-color-bar { height: 8px; width: 100%; }
+        .score-big { font-size: 2.5rem; font-weight: bold; color: #1a1a1a; }
     </style>
 </head>
 <body>
 
-<div class="container py-4">
-    <div class="header-section text-center mb-5 p-5 bg-dark text-white rounded-4 shadow">
-        <h1 class="display-5 fw-bold">ผลคะแนนการเลือกตั้ง สส. รายเขต</h1>
-        <p class="lead">ระบบแสดงผลคะแนนสดและรายชื่อผู้สมัครที่ชนะการเลือกตั้ง</p>
-    </div>
-
-    <div class="row g-3 mb-4 sticky-top bg-light p-3 rounded-3 shadow-sm">
-        <div class="col-md-5">
-            <select id="provinceFilter" class="form-select form-select-lg" onchange="filterData()">
-                <option value="">เลือกจังหวัดทั้งหมด</option>
-            </select>
-        </div>
-        <div class="col-md-5">
-            <input type="text" id="searchInput" class="form-select-lg form-control" placeholder="ค้นหาชื่อผู้สมัคร หรือพรรค...">
-        </div>
-        <div class="col-md-2 text-end">
-            <button class="btn btn-primary btn-lg w-100" onclick="location.reload()">🔄 รีเฟรช</button>
+<div class="container py-5">
+    <div class="row mb-5">
+        <div class="col-12 text-center">
+            <h2 class="fw-bold">Leaderboard พรรคการเมือง</h2>
+            <p class="text-muted">สรุปจำนวน สส. และคะแนนยอดนิยม (Popular Vote) ทั่วประเทศ</p>
         </div>
     </div>
 
-    <div id="loading" class="text-center py-5">
-        <div class="spinner-border text-primary" role="status"></div>
-        <p class="mt-2">กำลังประมวลผลคะแนน...</p>
+    <div class="row mb-5 justify-content-center">
+        <div class="col-md-8">
+            <div class="card p-4 shadow-sm border-0">
+                <canvas id="partyChart"></canvas>
+            </div>
+        </div>
     </div>
 
-    <div class="row g-4" id="scoreGrid">
+    <div class="row g-4" id="partyLeaderboard">
         </div>
 </div>
 
 <script>
-// ตัวอย่างการ Mapping ข้อมูล (ในสถานการณ์จริงควรโหลดจาก JSON)
-let candidates = []; 
-let votes = []; 
-
-async function loadElectionData() {
+async function fetchElectionData() {
     try {
-        // ดึงข้อมูลผู้สมัคร
-        const resCan = await fetch('candidate_constituency.json');
-        candidates = await resCan.json();
-        
-        // ดึงข้อมูลคะแนน (ถ้าไม่มีไฟล์ ให้ mock ข้อมูลจำลองขึ้นมาแสดง)
-        // const resVote = await fetch('result_constituency.json');
-        // votes = await resVote.json();
+        // ใช้ Proxy เพื่อเลี่ยง CORS (สำหรับการทดสอบ)
+        const proxy = "https://api.allorigins.win/raw?url=";
+        const urlResult = encodeURIComponent("https://static-ectreport69.ect.go.th/data/data/result/result_all.json");
+        const urlParty = encodeURIComponent("https://static-ectreport69.ect.go.th/data/data/refs/info_party.json");
 
-        populateProvinces();
-        renderResults();
-        document.getElementById('loading').classList.add('d-none');
-    } catch (e) {
-        console.error("Data Load Error:", e);
-        // แสดง Mock Data ถ้าโหลดไฟล์ไม่ได้เพื่อให้คุณเห็นหน้าตา Dashboard
-        mockResults();
+        const [resScore, resParty] = await Promise.all([
+            fetch(proxy + urlResult).then(r => r.json()),
+            fetch(proxy + urlParty).then(r => r.json())
+        ]);
+
+        // 1. สร้าง Map ข้อมูลพรรคเพื่อให้ดึงใช้ง่ายๆ
+        const partyMap = {};
+        resParty.forEach(p => {
+            partyMap[p.id] = { name: p.name, color: p.color, abbrev: p.abbrev };
+        });
+
+        // 2. ประมวลผลคะแนน (รวม สส. เขต + สส. บัญชีรายชื่อ)
+        const sortedParties = resScore.sort((a, b) => (b.total_seat) - (a.total_seat)).slice(0, 6);
+
+        renderUI(sortedParties, partyMap);
+        renderChart(sortedParties, partyMap);
+
+    } catch (error) {
+        console.error("Error fetching data:", error);
     }
 }
 
-function renderResults(filterProv = '', searchTerm = '') {
-    const grid = document.getElementById('scoreGrid');
-    grid.innerHTML = '';
-
-    // กรองข้อมูล
-    let displayList = candidates.filter(c => {
-        const matchProv = !filterProv || c.prov_name === filterProv;
-        const matchSearch = !searchTerm || c.name.includes(searchTerm) || c.party_name.includes(searchTerm);
-        return matchProv && matchSearch;
-    });
-
-    // เรียงคะแนนจากมากไปน้อย (สมมติว่าใน JSON มีฟิลด์ vote_count)
-    displayList.sort((a, b) => (b.vote_count || 0) - (a.vote_count || 0));
-
-    displayList.slice(0, 50).forEach((can, index) => {
-        const card = `
-            <div class="col-md-6 col-lg-4">
-                <div class="card score-card p-3 position-relative bg-white h-100">
-                    ${index === 0 ? '<span class="winner-tag text-dark shadow-sm">อันดับ 1</span>' : ''}
-                    <div class="d-flex align-items-center mb-3">
-                        <div class="flex-shrink-0">
-                            <div class="party-logo d-flex align-items-center justify-content-center fw-bold text-muted border">
-                                ${can.party_name[0]}
-                            </div>
-                        </div>
-                        <div class="ms-3">
-                            <h6 class="mb-0 text-primary fw-bold">${can.party_name}</h6>
-                            <h5 class="mb-0">${can.name}</h5>
-                            <small class="text-muted">เขต ${can.cons_no} | ${can.prov_name}</small>
-                        </div>
-                    </div>
-                    <div class="mt-auto">
-                        <div class="d-flex justify-content-between mb-1">
-                            <span class="small fw-bold">คะแนนรวม</span>
-                            <span class="text-primary fw-bold">${(can.vote_count || 0).toLocaleString()}</span>
-                        </div>
-                        <div class="progress">
-                            <div class="progress-bar bg-success" style="width: ${Math.random() * 100}%"></div>
+function renderUI(data, partyMap) {
+    const container = document.getElementById('partyLeaderboard');
+    container.innerHTML = data.map(p => {
+        const info = partyMap[p.party_id] || { name: 'ไม่ทราบชื่อพรรค', color: '#ccc' };
+        return `
+            <div class="col-md-4">
+                <div class="card party-card shadow-sm h-100">
+                    <div class="party-color-bar" style="background-color: ${info.color}"></div>
+                    <div class="card-body text-center">
+                        <h6 class="text-muted mb-1">${info.name}</h6>
+                        <div class="score-big">${p.total_seat}</div>
+                        <p class="mb-0 text-uppercase small fw-bold">ที่นั่ง สส. รวม</p>
+                        <hr>
+                        <div class="d-flex justify-content-between px-3">
+                            <small>สส. เขต: <b>${p.cons_seat}</b></small>
+                            <small>สส. บัญชีฯ: <b>${p.list_seat}</b></small>
                         </div>
                     </div>
                 </div>
             </div>
         `;
-        grid.innerHTML += card;
+    }).join('');
+}
+
+function renderChart(data, partyMap) {
+    const ctx = document.getElementById('partyChart').getContext('2d');
+    new Chart(ctx, {
+        type: 'bar',
+        data: {
+            labels: data.map(p => partyMap[p.party_id]?.abbrev || p.party_id),
+            datasets: [{
+                label: 'จำนวนที่นั่ง สส. รวม',
+                data: data.map(p => p.total_seat),
+                backgroundColor: data.map(p => partyMap[p.party_id]?.color || '#000'),
+                borderRadius: 10
+            }]
+        },
+        options: { plugins: { legend: { display: false } } }
     });
 }
 
-function populateProvinces() {
-    const provs = [...new Set(candidates.map(c => c.prov_name))].sort();
-    const select = document.getElementById('provinceFilter');
-    provs.forEach(p => select.innerHTML += `<option value="${p}">${p}</option>`);
-}
-
-function filterData() {
-    const prov = document.getElementById('provinceFilter').value;
-    const search = document.getElementById('searchInput').value;
-    renderResults(prov, search);
-}
-
-// ระบบ Search แบบ Real-time
-document.getElementById('searchInput').addEventListener('input', filterData);
-
-loadElectionData();
+fetchElectionData();
 </script>
 </body>
 </html>
