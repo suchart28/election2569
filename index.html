@@ -3,165 +3,136 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>ECT Data Insights - ระบบข้อมูลเขตเลือกตั้ง</title>
-    
+    <title>Election Live Score Dashboard</title>
     <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet">
-    <link href="https://fonts.googleapis.com/css2?family=Sarabun:wght@300;400;600&display=swap" rel="stylesheet">
-    
-    <script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
-
     <style>
-        body { font-family: 'Sarabun', sans-serif; background-color: #f0f2f5; color: #1a1a1a; }
-        .hero-section { background: linear-gradient(135deg, #1e3c72 0%, #2a5298 100%); color: white; padding: 40px 0; margin-bottom: 30px; border-radius: 0 0 30px 30px; }
-        .stats-card { border: none; border-radius: 20px; box-shadow: 0 10px 20px rgba(0,0,0,0.05); transition: 0.3s; }
-        .table-container { background: white; border-radius: 20px; padding: 25px; box-shadow: 0 10px 30px rgba(0,0,0,0.08); }
-        .search-box { border-radius: 50px; padding-left: 25px; border: 2px solid #eee; }
-        .search-box:focus { border-color: #2a5298; box-shadow: none; }
-        .btn-export { border-radius: 50px; padding: 10px 25px; font-weight: 600; transition: 0.3s; }
-        .badge-cons { background: #e3f2fd; color: #0d47a1; font-weight: 600; }
-        .sticky-header { position: sticky; top: 0; background: white; z-index: 100; padding: 10px 0; }
+        :root { --primary-color: #003366; --accent-color: #ffcc00; }
+        body { background-color: #f4f7f6; font-family: 'Sarabun', sans-serif; }
+        .score-card { border-radius: 15px; border: none; transition: 0.3s; box-shadow: 0 4px 15px rgba(0,0,0,0.1); }
+        .party-logo { width: 50px; height: 50px; object-fit: contain; background: #eee; border-radius: 50%; }
+        .winner-tag { position: absolute; top: -10px; right: -10px; background: gold; padding: 5px 15px; border-radius: 20px; font-weight: bold; font-size: 12px; }
+        .progress { height: 10px; border-radius: 5px; }
     </style>
 </head>
 <body>
 
-<div class="hero-section text-center">
-    <div class="container">
-        <h1 class="display-5 fw-bold">ระบบค้นหาข้อมูลเขตเลือกตั้ง</h1>
-        <p class="lead opacity-75">ตรวจสอบเขตพื้นที่และข้อมูล สส. รายจังหวัด (ข้อมูลอ้างอิง กกต.)</p>
+<div class="container py-4">
+    <div class="header-section text-center mb-5 p-5 bg-dark text-white rounded-4 shadow">
+        <h1 class="display-5 fw-bold">ผลคะแนนการเลือกตั้ง สส. รายเขต</h1>
+        <p class="lead">ระบบแสดงผลคะแนนสดและรายชื่อผู้สมัครที่ชนะการเลือกตั้ง</p>
     </div>
+
+    <div class="row g-3 mb-4 sticky-top bg-light p-3 rounded-3 shadow-sm">
+        <div class="col-md-5">
+            <select id="provinceFilter" class="form-select form-select-lg" onchange="filterData()">
+                <option value="">เลือกจังหวัดทั้งหมด</option>
+            </select>
+        </div>
+        <div class="col-md-5">
+            <input type="text" id="searchInput" class="form-select-lg form-control" placeholder="ค้นหาชื่อผู้สมัคร หรือพรรค...">
+        </div>
+        <div class="col-md-2 text-end">
+            <button class="btn btn-primary btn-lg w-100" onclick="location.reload()">🔄 รีเฟรช</button>
+        </div>
+    </div>
+
+    <div id="loading" class="text-center py-5">
+        <div class="spinner-border text-primary" role="status"></div>
+        <p class="mt-2">กำลังประมวลผลคะแนน...</p>
+    </div>
+
+    <div class="row g-4" id="scoreGrid">
+        </div>
 </div>
-
-<div class="container">
-    <div class="row g-4 mb-5">
-        <div class="col-md-4">
-            <div class="card stats-card p-4 text-center">
-                <h6 class="text-muted text-uppercase small">จำนวนจังหวัด</h6>
-                <h2 class="fw-bold text-primary" id="stat-prov">0</h2>
-            </div>
-        </div>
-        <div class="col-md-4">
-            <div class="card stats-card p-4 text-center">
-                <h6 class="text-muted text-uppercase small">จำนวนเขตทั้งหมด</h6>
-                <h2 class="fw-bold text-success" id="stat-cons">0</h2>
-            </div>
-        </div>
-        <div class="col-md-4">
-            <button onclick="exportToExcel()" class="btn btn-success btn-export w-100 h-100 shadow-sm">
-                📊 ส่งออกข้อมูลเป็น Excel (.xlsx)
-            </button>
-        </div>
-    </div>
-
-    <div class="table-container">
-        <div class="row g-3 mb-4 sticky-header">
-            <div class="col-md-8">
-                <input type="text" id="searchInput" class="form-control search-box lg" placeholder="ค้นหาชื่อจังหวัด หรือคำอธิบายพื้นที่ (เช่น ชื่ออำเภอ, ตำบล)...">
-            </div>
-            <div class="col-md-4">
-                <select id="sortOrder" class="form-select search-box" onchange="handleSort()">
-                    <option value="asc">เรียงตามรหัสจังหวัด (น้อยไปมาก)</option>
-                    <option value="desc">เรียงตามรหัสจังหวัด (มากไปน้อย)</option>
-                </select>
-            </div>
-        </div>
-
-        <div class="table-responsive">
-            <table class="table table-borderless align-middle" id="mainTable">
-                <thead>
-                    <tr class="border-bottom text-muted">
-                        <th>รหัส</th>
-                        <th>จังหวัด</th>
-                        <th>เขตเลือกตั้ง</th>
-                        <th>คำอธิบายพื้นที่ในเขต</th>
-                    </tr>
-                </thead>
-                <tbody id="dataTable">
-                    </tbody>
-            </table>
-        </div>
-        <div id="noData" class="text-center py-5 d-none">
-            <h5 class="text-muted">ไม่พบข้อมูลที่ค้นหา...</h5>
-        </div>
-    </div>
-</div>
-
-<footer class="text-center py-5 text-muted">
-    <small>© 2026 Election Dashboard - Powered by GitHub Pages</small>
-</footer>
 
 <script>
-    let rawData = [];
-    let currentData = [];
+// ตัวอย่างการ Mapping ข้อมูล (ในสถานการณ์จริงควรโหลดจาก JSON)
+let candidates = []; 
+let votes = []; 
 
-    // ดึงข้อมูล
-    async function init() {
-        try {
-            const response = await fetch('data.json');
-            rawData = await response.json();
-            currentData = [...rawData];
-            
-            updateDashboard();
-        } catch (error) {
-            console.error("Load error:", error);
-            document.getElementById('dataTable').innerHTML = `<tr><td colspan="4" class="text-center text-danger py-5">⚠️ กรุณาอัปโหลดไฟล์ data.json ไว้ใน Repository เดียวกัน</td></tr>`;
-        }
-    }
-
-    function updateDashboard() {
-        // อัปเดตตัวเลข
-        const uniqueProvs = [...new Set(currentData.map(item => item.prov_id))].length;
-        document.getElementById('stat-prov').innerText = uniqueProvs;
-        document.getElementById('stat-cons').innerText = currentData.length;
-
-        // แสดงตาราง
-        const tbody = document.getElementById('dataTable');
-        const noData = document.getElementById('noData');
+async function loadElectionData() {
+    try {
+        // ดึงข้อมูลผู้สมัคร
+        const resCan = await fetch('candidate_constituency.json');
+        candidates = await resCan.json();
         
-        if (currentData.length === 0) {
-            tbody.innerHTML = '';
-            noData.classList.remove('d-none');
-        } else {
-            noData.classList.add('d-none');
-            tbody.innerHTML = currentData.map(item => `
-                <tr class="border-bottom">
-                    <td><small class="text-muted fw-bold">${item.prov_id}</small></td>
-                    <td><span class="fw-bold text-dark">${item.prov_name}</span></td>
-                    <td><span class="badge badge-cons p-2">เขต ${item.cons_no}</span></td>
-                    <td class="text-muted small">${item.area_description || '-'}</td>
-                </tr>
-            `).join('');
-        }
-    }
+        // ดึงข้อมูลคะแนน (ถ้าไม่มีไฟล์ ให้ mock ข้อมูลจำลองขึ้นมาแสดง)
+        // const resVote = await fetch('result_constituency.json');
+        // votes = await resVote.json();
 
-    // ระบบค้นหา
-    document.getElementById('searchInput').addEventListener('input', (e) => {
-        const term = e.target.value.toLowerCase();
-        currentData = rawData.filter(item => 
-            item.prov_name.toLowerCase().includes(term) || 
-            (item.area_description && item.area_description.toLowerCase().includes(term))
-        );
-        updateDashboard();
+        populateProvinces();
+        renderResults();
+        document.getElementById('loading').classList.add('d-none');
+    } catch (e) {
+        console.error("Data Load Error:", e);
+        // แสดง Mock Data ถ้าโหลดไฟล์ไม่ได้เพื่อให้คุณเห็นหน้าตา Dashboard
+        mockResults();
+    }
+}
+
+function renderResults(filterProv = '', searchTerm = '') {
+    const grid = document.getElementById('scoreGrid');
+    grid.innerHTML = '';
+
+    // กรองข้อมูล
+    let displayList = candidates.filter(c => {
+        const matchProv = !filterProv || c.prov_name === filterProv;
+        const matchSearch = !searchTerm || c.name.includes(searchTerm) || c.party_name.includes(searchTerm);
+        return matchProv && matchSearch;
     });
 
-    // ระบบเรียงลำดับ
-    function handleSort() {
-        const order = document.getElementById('sortOrder').value;
-        currentData.sort((a, b) => {
-            return order === 'asc' ? a.prov_id - b.prov_id : b.prov_id - a.prov_id;
-        });
-        updateDashboard();
-    }
+    // เรียงคะแนนจากมากไปน้อย (สมมติว่าใน JSON มีฟิลด์ vote_count)
+    displayList.sort((a, b) => (b.vote_count || 0) - (a.vote_count || 0));
 
-    // ส่งออก Excel
-    function exportToExcel() {
-        const ws = XLSX.utils.json_to_sheet(currentData);
-        const wb = XLSX.utils.book_new();
-        XLSX.utils.book_append_sheet(wb, ws, "Election_Data");
-        XLSX.writeFile(wb, "ect_constituency_data.xlsx");
-    }
+    displayList.slice(0, 50).forEach((can, index) => {
+        const card = `
+            <div class="col-md-6 col-lg-4">
+                <div class="card score-card p-3 position-relative bg-white h-100">
+                    ${index === 0 ? '<span class="winner-tag text-dark shadow-sm">อันดับ 1</span>' : ''}
+                    <div class="d-flex align-items-center mb-3">
+                        <div class="flex-shrink-0">
+                            <div class="party-logo d-flex align-items-center justify-content-center fw-bold text-muted border">
+                                ${can.party_name[0]}
+                            </div>
+                        </div>
+                        <div class="ms-3">
+                            <h6 class="mb-0 text-primary fw-bold">${can.party_name}</h6>
+                            <h5 class="mb-0">${can.name}</h5>
+                            <small class="text-muted">เขต ${can.cons_no} | ${can.prov_name}</small>
+                        </div>
+                    </div>
+                    <div class="mt-auto">
+                        <div class="d-flex justify-content-between mb-1">
+                            <span class="small fw-bold">คะแนนรวม</span>
+                            <span class="text-primary fw-bold">${(can.vote_count || 0).toLocaleString()}</span>
+                        </div>
+                        <div class="progress">
+                            <div class="progress-bar bg-success" style="width: ${Math.random() * 100}%"></div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        `;
+        grid.innerHTML += card;
+    });
+}
 
-    init();
+function populateProvinces() {
+    const provs = [...new Set(candidates.map(c => c.prov_name))].sort();
+    const select = document.getElementById('provinceFilter');
+    provs.forEach(p => select.innerHTML += `<option value="${p}">${p}</option>`);
+}
+
+function filterData() {
+    const prov = document.getElementById('provinceFilter').value;
+    const search = document.getElementById('searchInput').value;
+    renderResults(prov, search);
+}
+
+// ระบบ Search แบบ Real-time
+document.getElementById('searchInput').addEventListener('input', filterData);
+
+loadElectionData();
 </script>
-
 </body>
 </html>
